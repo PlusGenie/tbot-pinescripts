@@ -1,0 +1,56 @@
+//@version=5
+strategy("TradingBoat x MACD Strategy",
+     overlay = true,
+     initial_capital=10000,
+     currency=currency.USD,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value=100,
+     use_bar_magnifier = true,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=0.005,//Interactive Brokers rate
+     process_orders_on_close = true)
+
+import import AlphaCentauri66367/PineTradingbotWebhook/1 as tv
+i_webhookKey = "WebhookReceived:8c43d5"
+
+// Filtering time {
+i_startTime = input.time(title="Start Filter", defval=timestamp("05 Nov 2021 09:30 +0000"), group="Time Filter", tooltip="Start date & time to begin searching for setups")
+i_endTime = input.time(title="End Filter",   defval=timestamp("1 Jan 2099 19:30 +0000"), group="Time Filter", tooltip="End date & time to stop searching for setups")
+f_dateFilter = time >= i_startTime and time <= i_endTime
+//}
+
+fastLength = input(12)
+slowlength = input(26)
+MACDLength = input(9)
+macd = ta.ema(close, fastLength) - ta.ema(close, slowlength)
+signal = ta.ema(macd, MACDLength)
+delta = macd - signal
+
+ema20 = ta.ema(close,20)
+plot(ema20)
+plot(macd, color = color.blue)
+plot(signal, color = color.red)
+hline(0, "Zero Line", color=color.new(#787B86, 50))
+
+longEntryPreCond = strategy.position_size == 0 and f_dateFilter
+longEntryCond = longEntryPreCond and ta.crossover(delta, 0) and close > ema20
+
+longClosePreCond = strategy.position_size > 0
+longCloseCond = longClosePreCond and ta.crossunder(delta, 0) and close < ema20
+
+
+plotshape(longEntryCond, style=shape.labelup, location=location.belowbar, color=color.new(#046ff9, 0), size=size.large, text='Buy', textcolor=color.new(color.white, 0))      //plotting up arrow when buy/long conditions met 
+plotshape(longCloseCond, style=shape.labeldown, location=location.abovebar, color=color.new(#046ff9, 0), size=size.large, text='Sell', textcolor=color.new(color.white, 0))  //plotting down arrow when sell/short conditions met
+
+if longEntryCond
+    strategy.entry(id="Long", direction=strategy.long, comment="Long Enter")
+    // Market order
+    msg = tv.makeWebhookJson(webhookKey = i_webhookKey,direction = 'strategy.entrylong',qty=100,orderRef='#9')
+    alert(msg, alert.freq_once_per_bar_close)
+
+if longCloseCond
+    strategy.close(id="Long", comment="Long Exit")
+    // Market order
+    msg = tv.makeWebhookJson(webhookKey = i_webhookKey,direction = 'strategy.closelong',qty=100,orderRef='#9')
+    alert(msg, alert.freq_once_per_bar_close)
+

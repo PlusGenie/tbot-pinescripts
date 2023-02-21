@@ -1,0 +1,57 @@
+//@version=5
+strategy("Bolinger Bands Strategy",
+     overlay=true,
+     initial_capital=10000,
+     currency=currency.USD,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value=100,
+     use_bar_magnifier = true,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=0.005, //Interactive Brokers rate
+     process_orders_on_close = true)
+
+import import AlphaCentauri66367/PineTradingbotWebhook/1 as tv
+i_webhookKey = "WebhookReceived:8c43d5"
+
+i_startTime = input.time(title="Start Filter", defval=timestamp("05 Nov 2021 09:30 +0000"), group="Time Filter", tooltip="Start date & time to begin searching for setups")
+i_endTime = input.time(title="End Filter",   defval=timestamp("1 Jan 2099 19:30 +0000"), group="Time Filter", tooltip="End date & time to stop searching for setups")
+f_dateFilter = time >= i_startTime and time <= i_endTime
+
+source = close
+length = input.int(20, minval=1)
+mult = input.float(2.0, minval=0.001, maxval=50)
+[basis, upper, lower] = ta.bb(source, length, mult)
+
+buyCondition = strategy.position_size == 0 and f_dateFilter and ta.crossover(close, lower)
+sellCondtion = strategy.position_size > 0 and f_dateFilter and ta.crossunder(close, upper)
+
+plot(upper, 'BB upper', color = color.aqua)
+plot(lower, 'BB lower', color = color.aqua)
+
+if buyCondition
+    msg = tv.makeWebhookJson(webhookKey = i_webhookKey,direction = 'strategy.entrylong',qty=100,
+     entryLimit=0,entryStop=0,exitLimit=0,exitStop=0,orderId='#1')
+    alert(msg, freq = alert.freq_once_per_bar)
+    strategy.entry("BBandLE", strategy.long, stop=lower, alert_message = "Current buy " + str.tostring(close))
+
+bgcolor(buyCondition ? color.new(color.blue, 30) : na)
+if sellCondtion
+    msg = tv.makeWebhookJson(webhookKey = i_webhookKey,direction = 'strategy.closelong',qty=100,
+     entryLimit=0,entryStop=0,exitLimit=0,exitStop=0,orderId='#1')
+    alert(msg, freq = alert.freq_once_per_bar)
+    strategy.close("BBandLE", alert_message = "Current close " + str.tostring(close))
+
+//  Moving Average Indicator {
+fastAverage = ta.ema(close, 10)
+slowAverage = ta.ema(close, 50)
+plot(fastAverage, title = "EMA 10", color=color.red)
+plot(slowAverage, title = "EMA 50", color=color.red)
+// Show the moving average trend with a coloured background
+backgroundColor = if close > fastAverage and fastAverage > slowAverage
+    color.new(color.green, 85)
+else if close < fastAverage and fastAverage < slowAverage
+    color.new(color.red, 85)
+else
+    color.new(color.orange, 90)
+bgcolor(backgroundColor, title="EMA Background")
+// }

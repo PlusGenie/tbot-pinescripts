@@ -1,0 +1,47 @@
+// Tbot Use case
+// #1 Sends entrylong - bracket orders
+// #2 In addition to #1, sends a market close order if orders are filled (belt and braces)
+// Credit: civil.estimation (https://www.tradingview.com/script/WD09HFwm-Buy-Take-Profit-OR-Stop-Loss-Based/)
+
+//@version=5
+strategy('Stop Loss Example: Simple Stop Loss v12',
+     overlay=true,
+     initial_capital=10000,
+     currency=currency.USD,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value=100,
+     use_bar_magnifier = true,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=0.005, //Interactive Brokers rate
+     process_orders_on_close = true)
+
+
+import import AlphaCentauri66367/PineTradingbotWebhook/1 as tv
+i_webhookKey = "WebhookReceived:8c43d5"
+
+sma_per = input.int(14, title='SMA Lookback Period', minval=1)
+sl_inp = input(5.0, title='Stop Loss %') / 100
+tp_inp = input(3.0, title='Take Profit %') / 100
+
+sma = ta.sma(close, sma_per)
+
+stop_level = nz(strategy.position_avg_price * (1 - sl_inp))
+take_level = nz(strategy.position_avg_price * (1 + tp_inp))
+
+longEntryCond = strategy.position_size == 0 and ta.crossover(close, sma)
+longExitCond = strategy.position_size > 0 and nz(stop_level) and nz(take_level)
+
+plotshape(longEntryCond,  color = color.green)
+plotshape(longExitCond, color = color.red)
+
+if longEntryCond
+    msg = tv.makeWebhookJson(webhookKey = i_webhookKey,direction = 'strategy.entrylong',
+     entryLimit=0,entryStop=0,exitLimit=take_level, exitStop=stop_level, qty=100, orderRef='SLV12')
+    strategy.entry('Simple SMA Entry', strategy.long, alert_message = msg)
+
+if longExitCond
+    msgFill = tv.makeWebhookJson(webhookKey = i_webhookKey,direction = 'strategy.closelong',
+     entryLimit=0,entryStop=0,exitLimit=0, exitStop=0, qty=100,orderRef='SLV12')
+    strategy.exit('Stop Loss/TP', 'Simple SMA Entry', stop=stop_level, limit=take_level, alert_message = msgFill)
+
+plot(sma)

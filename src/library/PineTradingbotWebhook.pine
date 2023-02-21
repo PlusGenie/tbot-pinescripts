@@ -1,0 +1,49 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlphaCentauri66367
+//
+// Credits:
+//  JSON functions taken from © beskrovnykh: https://www.tradingview.com/script/HFGmR9ST-market-monitor/
+
+//@version=5
+// @description Provides Webhook JSON strings for Tbot on Tradingboat
+
+library("PineTradingbotWebhook")
+
+_metricToJson(name, value) =>
+    "{" + '"name": ' + '"' + str.tostring(name) + '"' + ', "value": ' + str.tostring(value) + "}"
+
+// @function Creates a Webhook message for Tbot on Tradingboat
+// @param webhookKey the unique key to the Flask (TVWB) server
+// @param direction the same as the strategy's direction
+// @returns JSON as a string
+export makeWebhookJson(
+     simple string webhookKey,
+     simple string direction,
+     simple float qty = 0.0,
+     float entryLimit = 0.0,
+     float entryStop = 0.0,
+     float exitLimit = 0.0,
+     float exitStop = 0.0,
+     simple string orderRef = 'defOrderId',
+     simple string contract = 'stock'
+     ) =>
+    metrics = array.new_string()
+    array.push(metrics, _metricToJson("entry.limit", math.round_to_mintick(entryLimit)))
+    array.push(metrics, _metricToJson("entry.stop", math.round_to_mintick(entryStop)))
+    array.push(metrics, _metricToJson("exit.limit", math.round_to_mintick(exitLimit)))
+    array.push(metrics, _metricToJson("exit.stop", math.round_to_mintick(exitStop)))
+    array.push(metrics, _metricToJson("qty", math.round_to_mintick(qty)))
+    array.push(metrics, _metricToJson("price", close))
+    metricsJson = "[" + array.join(metrics,', ') + "]"
+
+    messageContent = array.new_string()
+    array.push(messageContent, '"timestamp": ' + str.tostring(time_close))
+    array.push(messageContent, '"ticker": ' + '"' + str.tostring(syminfo.ticker) + '"')
+    array.push(messageContent, '"currency": ' + '"' + str.tostring(syminfo.currency) + '"')
+    array.push(messageContent, '"timeframe": ' + '"' + str.tostring(timeframe.period) + '"')
+    array.push(messageContent, '"key": ' + '"' + str.tostring(webhookKey) + '"')
+    array.push(messageContent, '"contract": ' + '"' + str.tostring(contract) + '"')
+    array.push(messageContent, '"orderRef": ' + '"' + str.tostring(orderRef) + '"')
+    array.push(messageContent, '"direction": ' + '"' + str.tostring(direction) + '"')
+    array.push(messageContent, '"metrics": ' + str.tostring(metricsJson))
+    messageJson = "{" + array.join(messageContent, ', ') + "}"

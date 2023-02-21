@@ -1,0 +1,44 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © beskrovnykh
+
+//@version=5
+indicator(title = "Market Monitor", shorttitle="MM", overlay=false)
+
+_pullData(src, res, rep) =>
+    out = request.security(syminfo.tickerid, res, src[rep ? 0 : barstate.isrealtime ? 1 : 0], gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)[rep ? 0 : barstate.isrealtime ? 0 : 1]
+    out
+
+tf = input.timeframe('D', title="Monitoring frequency")
+
+_metricToJson(name, value) =>
+    "{" + '"name": ' + '"' + str.tostring(name) + '"' + ', "value": ' + str.tostring(value) + "}"
+
+_marketConditionsToJson(timestamp, ticker, timeframe, metrics) =>
+    messageContent = array.new_string()
+    array.push(messageContent, '"timestamp": ' + str.tostring(timestamp))
+    array.push(messageContent, '"ticker": ' + '"' + str.tostring(ticker) + '"')
+    array.push(messageContent, '"timeframe": ' + '"' + str.tostring(timeframe) + '"')
+    array.push(messageContent, '"metrics": ' + str.tostring(metrics))
+    messageJson = "{" + array.join(messageContent, ', ') + "}"
+
+barTime = time(tf)
+barTimeChanged = ta.change(barTime)
+
+spread = _pullData(high-low, tf, false)
+change = _pullData(close-close[1], tf, false)
+volumeChange = _pullData(volume-volume[1], tf, false)
+
+plot(spread, title="Spread", color=color.green, linewidth=2)
+plot(change, title="Change", color=color.yellow, linewidth=2)
+
+if barTimeChanged
+    metrics = array.new_string()
+    array.push(metrics, _metricToJson("spread", 'spread'))
+    array.push(metrics, _metricToJson("change", change))
+    array.push(metrics, _metricToJson("volume_change", volumeChange))
+    metricsJson = "[" + array.join(metrics,', ') + "]"
+    msg = _marketConditionsToJson(timenow, syminfo.ticker, tf, metricsJson)
+    alert(msg, alert.freq_once_per_bar)
+
+
+bgcolor(barTimeChanged ? color.new(color.green, 80) : na)
