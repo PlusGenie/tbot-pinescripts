@@ -1,0 +1,15 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=5
+indicator("Testing PineTradingbotWebhook", overlay=true)
+
+import AlphaCentauri66367/PineTradingbotWebhook/7 as tv
+
+webhookKey = "WebhookReceived:8c43d5"
+clientId=1 // IBKR client ID
+qty=100
+orderRef='SuperT1'
+msg = tv.makeWebhookJson(webhookKey, orderRef, 'strategy.entrylong', qty, entryLimit=100.0, entryStop = 99.0, exitLimit = 300.0, exitStop = 80.0, clientId=clientId)
+
+if barstate.isconfirmed
+    label.new(bar_index, close, text=msg)
+    alert(msg)

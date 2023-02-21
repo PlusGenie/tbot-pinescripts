@@ -1,0 +1,295 @@
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Credit:
+// https://www.tradingview.com/script/680R1I3Z-Strength-of-Divergence-Across-Multiple-Indicators/
+// © reees
+//@version=5
+//inds
+// Ultimate indicator and Constance brown composite index
+//
+// color and shape of labels, lines
+strategy("Strength of Divergence Across Multiple Indicators on Tradingboat",
+     overlay = true,
+     initial_capital=10000,
+     currency=currency.USD,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value=100,
+     use_bar_magnifier = true,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=0.005,
+     process_orders_on_close=true
+     ) //Interactive Brokers rate
+import reees/TA/11 as t
+
+import AlphaCentauri66367/PineTradingbotWebhook/7 as tv
+
+//-----------------------------------------
+// inputs
+//-----------------------------------------
+
+var bullSwitch = input.bool(true, "Bullish", inline="dswitch", group="Divergence Params")
+var bearSwitch = input.bool(true, "Bearish", inline="dswitch", group="Divergence Params")
+var showHidden = input.bool(true, "Hidden", inline="dswitch", group="Divergence Params")
+var noBroken = input.bool(true,"Exclude if broken trendline",group="Divergence Params",tooltip="If set, divergence is not considered valid if an intermediate pivot high/low breaks the divergence trendline (on a linear scale). If using a logarithmic scale, you may want to turn this switch off as some trendlines that are broken on a linear scale may not be broken on a log scale. Only relevant if Lookback Pivots > 1.")
+var ppLength = input.int(4,"Previous pivot bars before/after",minval=1,group="Divergence Params",tooltip="Min # bars before and after a previous pivot high/low to consider it valid for divergence check")
+var cpLengthBefore = input.int(4,"Next (divergent) pivot bars before",minval=1,group="Divergence Params",tooltip="Min # leading bars before the next (divergent) pivot high/low to consider it valid for divergence check")
+var cpLengthAfter = input.int(2,"Next (divergent) pivot bars after",minval=1,group="Divergence Params",tooltip="# trailing bars after the next (divergent) pivot high/low to consider it valid for divergence check. Decreasing this value may detect divergence sooner, but with less confidence.")
+var lbBars = input.int(50,"Lookback bars",minval=1,maxval=100,group="Divergence Params",inline="lb")
+var lbPivs = input.int(2,"Lookback pivots",minval=1,group="Divergence Params",inline="lb",tooltip="# of bars or # of pivot highs/lows to look back across, whichever comes first")
+var w_reg = input.float(1.0,"Regular divergence weight",step=.1,minval=0.0,group="Divergence Params",inline="degreg")
+var w_hid = input.float(1.0,"Hidden divergence weight",step=.1,minval=0.0,group="Divergence Params",inline="degreg",tooltip="Value/weight of regular divergence versus hidden divergence (applies to all indicators)")
+var w_p = input.float(0.5,"Δ price weight",step=.1,minval=0.0,group="Divergence Params",inline="degprice")
+var w_i = input.float(1.5,"Δ indicator weight",step=.1,minval=0.0,group="Divergence Params",inline="degprice",tooltip="Value/weight of change in price versus change in indicator value (applies to all indicators)")
+bullPsource = input.source(low,"Bullish divergence price source",group="Divergence Params",tooltip="Used for indicators only when appropriate. If the selected source is not technically feasible or otherwise offends the spirit of an indicator, the indicator's natural source will be used instead.")
+bearPsource = input.source(high,"Bearish divergence price source",group="Divergence Params",tooltip="Used for indicators only when appropriate. If the selected source is not technically feasible or otherwise offends the spirit of an indicator, the indicator's natural source will be used instead.")
+//
+var iRsi = input.bool(true,"RSI", group="Indicator", inline="ind_rsi")
+var w_rsi = input.float(1.1,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_rsi")
+var e_rsi = input.float(1.0,"Extreme value",step=.1,minval=0.0,group="Indicator",inline="ind_rsi",tooltip="Relative Strength Index (RSI)\n\nWeight: Weight of RSI divergence in total divergence strength calculation.\n\nExtreme divergence value: value above which RSI divergence is considered extreme.")
+
+var iMacd = input.bool(true,"MACD", group="Indicator", inline="ind_macd")
+var w_macd = input.float(.9,"Weight",step=.1,minval=0.0,group="Indicator",inline="ind_macd")
+var e_macd = input.float(1.0,"Extreme value",step=.1,minval=0.0,group="Indicator",inline="ind_macd",tooltip="Moving Average Convergence/Divergence (MACD)\n\nWeight: Weight of MACD divergence in total divergence strength calculation.\n\nExtreme divergence value: value above which MACD divergence is considered extreme.")
+
+//
+var a_on = input.bool(true, "Alert", inline="alert", group="Alerts")
+var a_above = input.float(1.0, "for values above", step=.1, inline="alert", group="Alerts")
+//
+var noLine = input.bool(true,"Show lines",group="Display Settings")==false
+var noLab = input.bool(true,"Show labels",group="Display Settings")==false
+var extrDiv = input.float(5.0,"Show largest labels for values above: ",minval=0.0,group="Display Settings",tooltip="Total divergence strength greater than this value will show the largest label (extreme divergence). A good rule of thumb is to keep this value slightly less than the number of selected indicators.")
+var noLabB = input.float(0.5,"Don't show labels for values below: ",minval=0.0,group="Display Settings",tooltip="Total divergence strength less than this value will not show any label.")
+var lTransp = input.int(80,"Line transparency",minval=0,maxval=100)
+
+//-----------------------------------------
+// functions
+//-----------------------------------------
+
+strengthMap(d,e) =>
+    if d >= e
+        5
+    else if d > e*.8
+        4
+    else if d > e*.6
+        3
+    else if d > e*.4
+        2
+    else if d > e*.2
+        1
+    else
+        0
+
+strengthMapI(d,i="") =>
+    e = if i=="RSI"
+        e_rsi
+    else if i=="MACD"
+        e_macd
+    else
+        0
+    strengthMap(d,e)
+
+strengthDesc(d,i="") =>
+    s = i!= "" ? strengthMapI(d,i) : strengthMap(d,extrDiv)
+    if s == 5
+        "Extreme"
+    else if s == 4
+        "Very strong"
+    else if s == 3
+        "Strong"
+    else if s == 2
+        "Moderate"
+    else if s == 1
+        "Weak"
+    else
+        "Very weak"
+
+drawLine(x1,y1,x2,y2,dt,h) =>
+    c = dt==true?color.new(color.red,lTransp):color.new(color.green,lTransp)
+    if noLine==false and (h==false or showHidden==true)
+        line.new(x1,y1,x2,y2,color=c,width=1,style=h==true?line.style_dashed:line.style_solid)
+
+drawLabel(bear,c,d,l) =>
+    if c > 0 and d >= noLabB and noLab==false
+        labX = bar_index-cpLengthAfter
+        labY = bear == true ? bearPsource[cpLengthAfter] : bullPsource[cpLengthAfter]
+        s = strengthMap(d,extrDiv)
+        dtxt = strengthDesc(d) + " divergence (" + str.tostring(math.round(d,3)) + ")\n"
+        ttxt = dtxt + " Indicator breakdown (" + str.tostring(c) + "):\n" + l
+        txt = if s < 3
+            ""
+        else
+            str.tostring(math.round(d,2)) + " (" + str.tostring(c) + ")"
+        transp = s < 4 ? 50 : 10
+        size = if s == 5 
+            size.normal
+        else if s == 4
+            size.small
+        else
+            size.tiny
+        clr = bear == true ? color.new(color.red,transp) : color.new(color.green,transp)
+        style = bear == true ? label.style_label_down : label.style_label_up
+        label.new(labX,labY,text=txt,tooltip=ttxt,textalign=text.align_center,style=style,size=size,color=clr,textcolor=color.white)
+
+detail(t,d) =>
+    "   " + t +":  " + strengthDesc(d,t) + " (" + str.tostring(math.round(d,3)) + ")\n"
+
+//-----------------------------------------
+// test for divergence
+//-----------------------------------------
+
+// RSI
+bearRsi = false
+bullRsi = false
+bearRsiDeg = 0.0
+bullRsiDeg = 0.0
+if iRsi==true
+    if bearSwitch==true
+        i_bear = ta.rsi(bearPsource, 14)
+        [f,d,t,x1,y1,x2,y2] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,noBroken,w_p,w_i,w_hid,w_reg)
+        d := d*w_rsi
+        if f==true
+            bearRsi := t==1 or showHidden==true ? true : false
+            bearRsiDeg := t==1 or showHidden==true ? d : 0.0
+            drawLine(x1,y1,x2,y2,true,t==2)
+    if bullSwitch==true
+        i_bull = ta.rsi(bullPsource, 14)
+        [f,d,t,x1,y1,x2,y2] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,noBroken,w_p,w_i,w_hid,w_reg)
+        d := d*w_rsi
+        if f==true
+            bullRsi := t==1 or showHidden==true ? true : false
+            bullRsiDeg := t==1 or showHidden==true ? d : 0.0
+            drawLine(x1,y1,x2,y2,false,t==2)
+
+// MACD
+bearMacd = false
+bullMacd = false
+bearMacdDeg = 0.0
+bullMacdDeg = 0.0
+if iMacd==true
+    if bearSwitch==true
+        [_,_,i_bear] = ta.macd(bearPsource,12,26,9)
+        [f,d,t,x1,y1,x2,y2] = t.div_bear(bearPsource,i_bear,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,noBroken,w_p,w_i,w_hid,w_reg)
+        d := d*w_macd
+        if f==true
+            bearMacd := t==1 or showHidden==true ? true : false
+            bearMacdDeg := t==1 or showHidden==true ? d : 0.0
+            drawLine(x1,y1,x2,y2,true,t==2)
+    if bullSwitch==true
+        [_,_,i_bull] = ta.macd(bullPsource,12,26,9)
+        [f,d,t,x1,y1,x2,y2] = t.div_bull(bullPsource,i_bull,cpLengthAfter,cpLengthBefore,ppLength,lbBars,lbPivs,noBroken,w_p,w_i,w_hid,w_reg)
+        d := d*w_macd
+        if f==true
+            bullMacd := t==1 or showHidden==true ? true : false
+            bullMacdDeg := t==1 or showHidden==true ? d : 0.0
+            drawLine(x1,y1,x2,y2,false,t==2)
+
+
+// Calculate degree of divergence and add labels.
+bearCount = 0           // total number of divergent indicators
+bearTotalDeg = 0.0      // total degree of divergence across all indicators
+bearIndList = ""        // list of indicators for tooltip display
+bullCount = 0
+bullTotalDeg = 0.0
+bullIndList = ""
+
+// RSI
+if bearRsi==true
+    bearIndList := bearIndList + detail("RSI",bearRsiDeg)
+    bearCount+=1
+    bearTotalDeg += bearRsiDeg
+if bullRsi==true
+    bullIndList := bullIndList + detail("RSI",bullRsiDeg)
+    bullCount+=1
+    bullTotalDeg += bullRsiDeg
+
+// MACD
+if bearMacd==true
+    bearIndList := bearIndList + detail("MACD",bearMacdDeg)
+    bearCount+=1
+    bearTotalDeg += bearMacdDeg
+if bullMacd==true
+    bullIndList := bullIndList + detail("MACD",bullMacdDeg)
+    bullCount+=1
+    bullTotalDeg += bullMacdDeg
+
+// Draw label(s)
+drawLabel(true,bearCount,bearTotalDeg,bearIndList)
+drawLabel(false,bullCount,bullTotalDeg,bullIndList)
+
+// Alerts
+if a_on and (bullTotalDeg > a_above or bearTotalDeg > a_above)
+    alert("Divergence strength of " +str.tostring(math.max(bullTotalDeg,bearTotalDeg),"#.##") + " has formed.")
+
+// TBOT: START ----------------------------------------------------------------
+// Filtering time {
+i_startTime = input.time(title="Start Filter", defval=timestamp("05 Nov 2021 09:30 +0000"), group="Time Filter", tooltip="Start date & time to begin searching for setups")
+i_endTime = input.time(title="End Filter",   defval=timestamp("1 Jan 2099 19:30 +0000"), group="Time Filter", tooltip="End date & time to stop searching for setups")
+f_dateFilter = time >= i_startTime and time <= i_endTime
+//}
+
+structureLookback   = input.int(title="Lookback", defval=7, confirm=true)
+atrLength           = input.int(title="ATR Length", defval=14)
+multiplierLimit     = input.float(title="ATR Multiplier for Limit", defval=2.0, confirm=true)
+multiplierStop      = input.float(title="ATR Multiplier for Stop", defval=2.0, confirm=true)
+
+longEntryCond =  a_on and (bullTotalDeg > a_above) and strategy.position_size == 0 and bar_index > atrLength
+longExitCond = strategy.position_size > 0
+
+// Get the current ATR
+atrLimit = ta.atr(atrLength) * multiplierLimit
+atrStop = ta.atr(atrLength) * multiplierStop
+
+// TBOT: parameters to makeWebhookJson()
+webhookKey = "WebhookReceived:8c43d5"
+clientId=2 // default 1
+qty=math.abs(strategy.position_size)
+
+// Long Stop Loss Conditions
+float longStopPrice = na
+float longLimitPrice = na
+ll = ta.lowest(low, structureLookback)
+hh = ta.highest(low, structureLookback)
+
+if longEntryCond
+    longStopPrice := ll - atrStop
+    longLimitPrice := hh + atrLimit
+    // TBOT: creates a bracket IBKR order
+    msg = tv.makeWebhookJson(webhookKey=webhookKey, direction = 'strategy.entrylong',
+      qty=qty, exitLimit=longLimitPrice, exitStop=longStopPrice, orderRef='Div13', clientId=clientId)
+    strategy.entry("Enter Long #1", strategy.long, alert_message=msg)
+    strategy.exit("Exit Long#A", from_entry="Enter Long #1", stop=longStopPrice, limit=longLimitPrice)
+
+isChange = ta.change(longStopPrice) or ta.change(longLimitPrice)
+if longExitCond
+    longStopPrice := math.max(ll - atrStop, nz(longStopPrice[1]))
+    longLimitPrice := math.max(hh + atrLimit, nz(longLimitPrice[1]))
+    // Do not send unnecessary webhooks
+    if barstate.isconfirmed and isChange
+        msg = tv.makeWebhookJson(webhookKey = webhookKey, direction = 'strategy.exitlong',
+          exitLimit=longLimitPrice, exitStop=longStopPrice, qty=qty, orderRef='Div13', clientId=clientId)
+        alert(msg, alert.freq_once_per_bar_close)
+
+if longExitCond
+    // closlong for belt and braces
+    msg = tv.makeWebhookJson(webhookKey=webhookKey, direction = 'strategy.close', qty=qty, orderRef='Div13', clientId=clientId)
+    strategy.exit("Exit Long#B", from_entry="Enter Long #1", stop=longStopPrice,limit=longLimitPrice, alert_message=msg)
+
+// Debugging {
+plotchar(longLimitPrice, 'longLimitPrice')
+plotchar(longStopPrice, 'longStopPrice')
+
+// Get price of last entry in current position
+lastEntryPrice = strategy.opentrades.entry_price(strategy.opentrades - 1)
+plotchar(lastEntryPrice, "Last entry price")
+plot(lastEntryPrice, 'lastEntryPrice', color.rgb(136, 14, 20), linewidth=3)
+
+
+lastExitPrice = strategy.closedtrades.exit_price(strategy.closedtrades-1)
+plot(lastExitPrice, 'lastExitPrice', color.rgb(103, 136, 14), linewidth=3)
+
+plotchar(strategy.position_size, 'pos size')
+// Colour the background teal when the strategy closed a trade
+bgcolor(strategy.closedtrades > strategy.closedtrades[1] ? 
+	 color.new(color.purple, 80) : na)
+// }
+// TBOT: END ------------------------------------------------------------------

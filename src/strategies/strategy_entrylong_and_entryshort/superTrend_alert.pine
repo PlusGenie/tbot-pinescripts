@@ -1,0 +1,25 @@
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=5
+strategy('Hello World, Supertrend', overlay=true)
+
+atrPeriod = input(10, 'ATR Length')
+factor = input(3, 'Factor')
+
+import AlphaCentauri66367/PineTradingbotWebhook/7 as tv // TBOT
+webhookKey = "WebhookReceived:0b293b" // TBOT
+qty=100  // TBOT
+
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+plot(direction < 0 ? supertrend : na, "Up direction", color = color.green, style=plot.style_linebr)
+plot(direction > 0 ? supertrend : na, "Down direction", color = color.red, style=plot.style_linebr)
+
+if ta.change(supertrend)  > 0
+    msg = tv.makeWebhookJson(webhookKey, 'Long#1', 'strategy.entrylong', qty) // TBOT
+    alert(msg, alert.freq_once_per_bar_close)
+    strategy.entry('Long#1', strategy.long)
+
+if ta.change(supertrend) < 0
+    msg = tv.makeWebhookJson(webhookKey, 'Short#1', 'strategy.entryshort', qty) // TBOT
+    alert(msg, alert.freq_once_per_bar_close)
+    strategy.entry('Short#1', strategy.short)

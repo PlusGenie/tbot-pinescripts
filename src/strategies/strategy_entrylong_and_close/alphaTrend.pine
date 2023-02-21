@@ -1,0 +1,70 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// credit:
+// https://www.tradingview.com/script/o50NYLAZ-AlphaTrend/
+// author © KivancOzbilgic
+// developer © KivancOzbilgic
+// © beskrovnykh
+//@version=5
+
+strategy("Alpha Trend Strategy on TradingBoat",
+     overlay = true,
+     initial_capital=10000, 
+     currency=currency.USD,
+     default_qty_type = strategy.percent_of_equity, 
+     default_qty_value=100,
+     use_bar_magnifier = true,
+     commission_type=strategy.commission.cash_per_contract, 
+     commission_value=0.005 //Interactive Brokers rate
+     )
+// TBOT: import the library
+import AlphaCentauri66367/PineTradingbotWebhook/7 as tv
+
+coeff = input.float(1, 'Multiplier', step=0.1)
+AP = input(14, 'Common Period')
+ATR = ta.sma(ta.tr, AP)
+src = input(close)
+showsignalsk = input(title='Show Signals?', defval=true)
+novolumedata = input(title='Change calculation (no volume data)?', defval=false)
+upT = low - ATR * coeff
+downT = high + ATR * coeff
+AlphaTrend = 0.0
+AlphaTrend := (novolumedata ? ta.rsi(src, AP) >= 50 : ta.mfi(hlc3, AP) >= 50) ? 
+              (upT < nz(AlphaTrend[1])   ? nz(AlphaTrend[1]) : upT) :
+              (downT > nz(AlphaTrend[1]) ? nz(AlphaTrend[1]) : downT)
+
+color1 = AlphaTrend > AlphaTrend[2] ? #00E60F : AlphaTrend < AlphaTrend[2] ? #80000B : AlphaTrend[1] > AlphaTrend[3] ? #00E60F : #80000B
+k1 = plot(AlphaTrend, color=color.new(#0022FC, 0), linewidth=3)
+k2 = plot(AlphaTrend[2], color=color.new(#FC0400, 0), linewidth=3)
+
+fill(k1, k2, color=color1)
+
+buySignalk = ta.crossover(AlphaTrend, AlphaTrend[2])
+sellSignalk = ta.crossunder(AlphaTrend, AlphaTrend[2])
+
+K1 = ta.barssince(buySignalk)
+K2 = ta.barssince(sellSignalk)
+O1 = ta.barssince(buySignalk[1])
+O2 = ta.barssince(sellSignalk[1])
+
+plotshape(buySignalk and showsignalsk and O1 > K2 ? AlphaTrend[2] * 0.9999 : na, title='BUY', text='BUY', location=location.absolute, style=shape.labelup, size=size.tiny, color=color.new(#0022FC, 0), textcolor=color.new(color.white, 0))
+plotshape(sellSignalk and showsignalsk and O2 > K1 ? AlphaTrend[2] * 1.0001 : na, title='SELL', text='SELL', location=location.absolute, style=shape.labeldown, size=size.tiny, color=color.new(color.maroon, 0), textcolor=color.new(color.white, 0))
+
+
+longEntryCond = (buySignalk[1] and O1[1] > K2) and strategy.position_size == 0
+longCloseCond = (sellSignalk[1] and O2[1] > K1) and strategy.position_size > 0
+
+// TBOT: parameters to makeWebhookJson()
+webhookKey="WebhookReceived:8c43d5"
+qty=100
+orderRef='AlphaT10'
+
+if longEntryCond
+    // TBOT: create the msg for entrylong: default IBKR clientId set to 1
+    msg = tv.makeWebhookJson(webhookKey, orderRef, 'strategy.entrylong', qty)
+    strategy.entry("Long#1", strategy.long)
+    alert(msg)
+
+if longCloseCond
+    msg = tv.makeWebhookJson(webhookKey, orderRef, 'strategy.close', qty)
+    strategy.close(id="Long#1", alert_message=msg)
+    alert(msg)

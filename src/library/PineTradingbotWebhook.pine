@@ -1,0 +1,59 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlphaCentauri66367
+//
+// Credits:
+//  JSON functions taken from © beskrovnykh: https://www.tradingview.com/script/HFGmR9ST-market-monitor/
+
+//@version=5
+// @description Provides Webhook JSON strings for Tbot on Tradingboat
+
+library("PineTradingbotWebhook")
+
+_metricToJson(name, value) =>
+  str.format("'{'\"name\": \"{0}\", \"value\": {1}'}'", str.tostring(name), str.tostring(value))
+
+// @function Creates a Webhook message for Tbot on Tradingboat
+// @param webhookKey the unique key to the Flask (TVWB) server -  // Use format like WebhookReceived:123456
+// @param orderRef this will be used to create the order reference ID, together with timeframe and clientID 
+// @param direction the same as the strategy's direction -  strategy.entrylong, strategy.entryshort, strategy.exitlong, strategy.exitshort, strategy.close, strategy.close_all
+// @param qty default value is -1e10 indicating all contracts/units
+// @param entryLimit this is same to strategy.entry()'s limit parameter
+// @param entryStop this is same to strategy.entry()'s  stop parameter
+// @param exitLimit this is the same to strategy.exit()'s limit parameter
+// @param exitStop this is the same to strategy.exit()'s stop parameter
+// @param contract this will be translated to secType in ib insync. stock, forex, crypto
+// @param clientId this is for IB Gateway/TWS's clientID which should start with 1
+// @returns JSON as a series string
+export makeWebhookJson(
+     simple string webhookKey,
+     simple string orderRef = 'defOrderId',
+     simple string direction,
+     float qty = -1e10,
+     float entryLimit = 0.0,
+     float entryStop = 0.0,
+     float exitLimit = 0.0,
+     float exitStop = 0.0,
+     simple string contract = 'stock',
+     int clientId = 1
+     ) =>
+    metrics = array.new_string()
+    array.push(metrics, _metricToJson("entry.limit", math.round_to_mintick(entryLimit)))
+    array.push(metrics, _metricToJson("entry.stop", math.round_to_mintick(entryStop)))
+    array.push(metrics, _metricToJson("exit.limit", math.round_to_mintick(exitLimit)))
+    array.push(metrics, _metricToJson("exit.stop", math.round_to_mintick(exitStop)))
+    array.push(metrics, _metricToJson("qty", math.round_to_mintick(qty)))
+    array.push(metrics, _metricToJson("price", close))
+    metricsJson = str.format("[{0}]", array.join(metrics,', '))
+
+    messageContent = array.new_string()
+    array.push(messageContent, str.format("\"timestamp\": {0,number,#}", timenow))
+    array.push(messageContent, str.format("\"ticker\": \"{0}\"",syminfo.ticker))
+    array.push(messageContent, str.format("\"currency\": \"{0}\"",syminfo.currency))
+    array.push(messageContent, str.format("\"timeframe\": \"{0}\"",timeframe.period))
+    array.push(messageContent, str.format("\"clientId\": {0}",clientId))
+    array.push(messageContent, str.format("\"key\": \"{0}\"",webhookKey))
+    array.push(messageContent, str.format("\"contract\": \"{0}\"",contract))
+    array.push(messageContent, str.format("\"orderRef\": \"{0}\"",orderRef))
+    array.push(messageContent, str.format("\"direction\": \"{0}\"",direction))
+    array.push(messageContent, str.format("\"metrics\": {0}",metricsJson))
+    messageJson = str.format("'{'{0}'}'",array.join(messageContent, ', '))
