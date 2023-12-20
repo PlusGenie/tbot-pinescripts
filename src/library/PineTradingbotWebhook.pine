@@ -26,6 +26,7 @@ _metricToJson(name, value) =>
 // @param exitLimit this is the same to strategy.exit()'s limit parameter
 // @param exitStop this is the same to strategy.exit()'s stop parameter
 // @param contract this will be translated to secType in ib_insync. stock, forex, crypto and future(s)
+// @param ticker The TradingView ticker symbol for the asset; defaults to the current chart's ticker if not specified.
 // @param exchange Destination exchange for ib_insync, primarily for futures.
 // @param lastTradeDateOrContractMonth The contract's last trading day or contract month for ib_insync, mainly for futures. Should be in the format YYYYMM or YYYYMMDD.
 // @param clientId this is for IB Gateway/TWS's clientID which should start with 1
@@ -40,10 +41,12 @@ export makeWebhookJson(
      float exitLimit = 0.0,
      float exitStop = 0.0,
      simple string contract = '',
-     simple string exchange = '',
+     simple string ticker = '',
      simple string lastTradeDateOrContractMonth = '',
+     simple string exchange = '',
      int clientId = 1
      ) =>
+    modifiedTicker = ticker == '' ? syminfo.ticker : ticker
     modifiedContract = contract == '' ? syminfo.type : contract
     metrics = array.new_string()
     array.push(metrics, _metricToJson("entry.limit", math.round_to_mintick(entryLimit)))
@@ -56,7 +59,7 @@ export makeWebhookJson(
 
     messageContent = array.new_string()
     array.push(messageContent, str.format("\"timestamp\": {0,number,#}", timenow))
-    array.push(messageContent, str.format("\"ticker\": \"{0}\"",syminfo.ticker))
+    array.push(messageContent, str.format("\"ticker\": \"{0}\"",modifiedTicker))
     array.push(messageContent, str.format("\"currency\": \"{0}\"",syminfo.currency))
     array.push(messageContent, str.format("\"timeframe\": \"{0}\"",timeframe.period))
     array.push(messageContent, str.format("\"clientId\": {0}",clientId))
