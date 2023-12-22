@@ -1,0 +1,41 @@
+//@version=5
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Revised strategy for better code quality and readability.
+
+strategy('Hello World, Supertrend', overlay=true)
+
+// Define inputs with clear descriptions and default values.
+atrPeriod = input(10, title='ATR Length')
+factor = input(3, title='Factor')
+
+// Importing the library for TradingView webhook integration.
+import AlphaCentauri66367/PineTradingbotWebhook/9 as tv
+
+// Use descriptive variable names and store sensitive information securely.
+webhookKey = "WebhookReceived:8c43d5" // Consider storing keys securely outside the script.
+qty = 3  // Define the quantity for the order.
+
+// Calculate the Supertrend and its direction.
+[supertrend, direction] = ta.supertrend(factor, atrPeriod)
+
+// Plot Supertrend lines with clear labels and styles.
+plot(direction < 0 ? supertrend : na, title="Up direction", color=color.green, style=plot.style_linebr)
+plot(direction > 0 ? supertrend : na, title="Down direction", color=color.red, style=plot.style_linebr)
+
+// Create functions to handle long and short entries for better modularity.
+enterLong() =>
+    msg = tv.makeWebhookJson(webhookKey, 'CME202403#1', 'strategy.entrylong', qty, ticker='ES', exchange='CME', lastTradeDateOrContractMonth='202403')
+    alert(msg, alert.freq_once_per_bar_close)
+    strategy.entry('Long#1', strategy.long)
+
+enterShort() =>
+    msg = tv.makeWebhookJson(webhookKey, 'CME202403#2', 'strategy.entryshort', qty, ticker='ES', exchange='CME', lastTradeDateOrContractMonth='202403')
+    alert(msg, alert.freq_once_per_bar_close)
+    strategy.entry('Short#1', strategy.short)
+
+// Use conditional blocks to call the appropriate function based on Supertrend changes.
+if ta.change(supertrend) > 0
+    enterLong()
+
+if ta.change(supertrend) < 0
+    enterShort()
