@@ -27,8 +27,9 @@ _metricToJson(name, value) =>
 // @param exitStop this is the same to strategy.exit()'s stop parameter
 // @param contract this will be translated to secType in ib_insync. stock, forex, crypto and future(s)
 // @param ticker The TradingView ticker symbol for the asset; defaults to the current chart's ticker if not specified.
-// @param exchange Destination exchange for ib_insync, primarily for futures.
 // @param lastTradeDateOrContractMonth The contract's last trading day or contract month for ib_insync, mainly for futures. Should be in the format YYYYMM or YYYYMMDD.
+// @param exchange Destination exchange for ib_insync, primarily for futures.
+// @param multiplier The futures contract multiplier is the amount multiplying the price per point to determine total value.
 // @param clientId this is for IB Gateway/TWS's clientID which should start with 1
 // @returns JSON as a series string
 export makeWebhookJson(
@@ -44,6 +45,7 @@ export makeWebhookJson(
      simple string ticker = '',
      simple string lastTradeDateOrContractMonth = '',
      simple string exchange = '',
+     simple string multiplier = '',
      int clientId = 1
      ) =>
     modifiedTicker = ticker == '' ? syminfo.ticker : ticker
@@ -69,5 +71,6 @@ export makeWebhookJson(
     array.push(messageContent, str.format("\"direction\": \"{0}\"",direction))
     array.push(messageContent, str.format("\"exchange\": \"{0}\"",exchange))
     array.push(messageContent, str.format("\"lastTradeDateOrContractMonth\": \"{0}\"",lastTradeDateOrContractMonth))
+    array.push(messageContent, str.format("\"multiplier\": \"{0}\"",multiplier))
     array.push(messageContent, str.format("\"metrics\": {0}",metricsJson))
     messageJson = str.format("'{'{0}'}'",array.join(messageContent, ', '))

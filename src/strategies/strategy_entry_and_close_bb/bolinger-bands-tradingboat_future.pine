@@ -10,7 +10,7 @@ strategy("Bolinger Bands Strategy",
      commission_value=0.005, //Interactive Brokers rate
      process_orders_on_close = true)
 
-import AlphaCentauri66367/PineTradingbotWebhook/9 as tv
+import AlphaCentauri66367/PineTradingbotWebhook/10 as tv
 
 source = close
 length = input.int(20, minval=1)  // Shorten the length to make the Bollinger Bands more responsive to price movements.

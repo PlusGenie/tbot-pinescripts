@@ -9,7 +9,7 @@ atrPeriod = input(10, title='ATR Length')
 factor = input(3, title='Factor')
 
 // Importing the library for TradingView webhook integration.
-import AlphaCentauri66367/PineTradingbotWebhook/9 as tv
+import AlphaCentauri66367/PineTradingbotWebhook/10 as tv
 
 // Use descriptive variable names and store sensitive information securely.
 webhookKey = "WebhookReceived:8c43d5" // Consider storing keys securely outside the script.
